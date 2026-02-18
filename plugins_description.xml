@@ -1,0 +1,7 @@
+<library path="rviz2_reconfigure">
+    <class name="rviz2_reconfigure/Reconfigure" type="rviz2_reconfigure::RViz2Reconfigure" base_class_type="rviz_common::Panel">
+        <description>
+            ROS2 Reconfigure on RViz2
+        </description>
+    </class>
+</library>
