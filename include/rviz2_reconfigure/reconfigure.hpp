@@ -6,7 +6,16 @@
 #include <rviz_common/panel.hpp>
 #include <rviz_common/config.hpp>
 #include <rviz_common/display_context.hpp>
+
+#include "ui_reconfigure.h"
+#include "ui_param_dialog.h"
 #endif
+
+namespace Ui
+{
+    class Reconfigure;
+    class ParamDialog;
+} // namespace Ui
 
 namespace rviz2_reconfigure
 {

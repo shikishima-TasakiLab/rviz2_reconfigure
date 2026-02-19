@@ -22,12 +22,13 @@ set(CMAKE_AUTORCC ON)
 
 pluginlib_export_plugin_description_file(rviz_common plugins_description.xml)
 
-# qt5_wrap_ui(UIC_FILES
-#   src/ui/reconfigure.ui
-# )
+qt5_wrap_ui(UIC_FILES
+  src/ui/reconfigure.ui
+  src/ui/param_dialog.ui
+)
 
 add_library(rviz2_reconfigure SHARED
-# ${UIC_FILES}
+  ${UIC_FILES}
   include/rviz2_reconfigure/reconfigure.hpp
   src/reconfigure.cpp
 )
