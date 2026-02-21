@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>paramDialog</class>
+ <class>ParamDialog</class>
  <widget class="QDialog" name="paramDialog">
   <property name="geometry">
    <rect>

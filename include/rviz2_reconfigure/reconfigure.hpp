@@ -28,6 +28,29 @@ namespace rviz2_reconfigure
         void onInitialize() override;
         void load(const rviz_common::Config &config) override;
         void save(rviz_common::Config config) const override;
+    
+    protected Q_SLOTS:
+        void addPushBtn__clicked();
+    
+    private:
+        rclcpp::Node::SharedPtr nh_;
+        Ui::Reconfigure *ui_;
+    };
+
+    class ParamDialog : public QDialog
+    {
+        Q_OBJECT
+    public:
+        explicit ParamDialog(QWidget *parent = nullptr);
+        ~ParamDialog();
+        QMap<QString, QList<QTreeWidgetItem*> > getCheckedParams() const;
+    
+    protected Q_SLOTS:
+        void accept() override;
+        void refreshPushBtn__clicked();
+
+    private:
+        Ui::ParamDialog *ui_;
     };
 
 } // namespace rviz2_reconfigure

@@ -47,7 +47,7 @@ ament_target_dependencies(rviz2_reconfigure
   "Qt5"
 )
 
-# target_compile_definitions(rviz2_reconfigure PUBLIC "RVIZ2_RECONFIGURE_BUILDING_LIBRARY")
+target_compile_definitions(rviz2_reconfigure PUBLIC "RVIZ2_RECONFIGURE_BUILDING_LIBRARY")
 
 install(
   DIRECTORY include/
