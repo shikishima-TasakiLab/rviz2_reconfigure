@@ -7,6 +7,8 @@
 #include <rviz_common/config.hpp>
 #include <rviz_common/display_context.hpp>
 
+#include <QTimer>
+
 #include "ui_reconfigure.h"
 #include "ui_param_dialog.h"
 #endif
@@ -31,26 +33,35 @@ namespace rviz2_reconfigure
     
     protected Q_SLOTS:
         void addPushBtn__clicked();
-    
+        QTreeWidgetItem* getOrCreateChild(QTreeWidgetItem *parent, const QString &name);
+
     private:
         rclcpp::Node::SharedPtr nh_;
         Ui::Reconfigure *ui_;
+        QTimer *ros_timer_;
     };
+    
 
     class ParamDialog : public QDialog
     {
         Q_OBJECT
     public:
-        explicit ParamDialog(QWidget *parent = nullptr);
+        explicit ParamDialog(rclcpp::Node::SharedPtr node_handle, rviz_common::Panel *parent = nullptr);
         ~ParamDialog();
-        QMap<QString, QList<QTreeWidgetItem*> > getCheckedParams() const;
+        QList<QPair<QString, QString> > getCheckedParams() const;
     
     protected Q_SLOTS:
         void accept() override;
-        void refreshPushBtn__clicked();
+        void refresh();
+        QTreeWidgetItem* getOrCreateChild(QTreeWidgetItem *parent, const QString &name);
+        void onItemChanged(QTreeWidgetItem *item, int column);
+        void updateChildCheckState(QTreeWidgetItem *item, Qt::CheckState state);
+        void updateParentCheckState(QTreeWidgetItem *item);
 
     private:
+        rclcpp::Node::SharedPtr nh_;
         Ui::ParamDialog *ui_;
+        std::vector<rclcpp::Client<rcl_interfaces::srv::ListParameters>::SharedPtr> list_params_clients_;
     };
 
 } // namespace rviz2_reconfigure
