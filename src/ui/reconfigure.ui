@@ -14,13 +14,31 @@
    <string>Reconfigure</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
     <widget class="QTreeWidget" name="listNodeParamValue">
      <property name="dragEnabled">
       <bool>true</bool>
      </property>
+     <property name="selectionMode">
+      <enum>QAbstractItemView::MultiSelection</enum>
+     </property>
      <property name="sortingEnabled">
       <bool>true</bool>
+     </property>
+     <property name="headerHidden">
+      <bool>false</bool>
      </property>
      <attribute name="headerShowSortIndicator" stdset="0">
       <bool>true</bool>
@@ -41,15 +59,61 @@
     <layout class="QHBoxLayout" name="hLayout1">
      <item>
       <widget class="QPushButton" name="addPushBtn">
-       <property name="text">
-        <string>Add</string>
+       <property name="icon">
+        <iconset>
+         <normaloff>:/icons/add.svg</normaloff>:/icons/add.svg
+        </iconset>
        </property>
       </widget>
      </item>
      <item>
       <widget class="QPushButton" name="removePushBtn">
+       <property name="icon">
+        <iconset>
+         <normaloff>:/icons/remove.svg</normaloff>:/icons/remove.svg
+        </iconset>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="Line" name="line">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="refreshPushBtn">
+       <property name="icon">
+        <iconset>
+         <normaloff>:/icons/refresh.svg</normaloff>:/icons/refresh.svg
+        </iconset>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="autoRefreshChkBox">
        <property name="text">
-        <string>Remove</string>
+        <string>Auto</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QDoubleSpinBox" name="autoRefreshSpinBox">
+       <property name="suffix">
+        <string notr="true"> s</string>
+       </property>
+       <property name="decimals">
+        <number>1</number>
+       </property>
+       <property name="minimum">
+        <double>0.100000000000000</double>
+       </property>
+       <property name="maximum">
+        <double>60.000000000000000</double>
+       </property>
+       <property name="value">
+        <double>5.000000000000000</double>
        </property>
       </widget>
      </item>

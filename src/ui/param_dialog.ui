@@ -30,8 +30,10 @@
     <layout class="QHBoxLayout" name="hLayout1">
      <item>
       <widget class="QPushButton" name="refreshPushBtn">
-       <property name="text">
-        <string>Refresh</string>
+       <property name="icon">
+        <iconset>
+         <normaloff>:/icons/refresh.svg</normaloff>:/icons/refresh.svg
+        </iconset>
        </property>
       </widget>
      </item>

@@ -7,8 +7,6 @@
 #include <rviz_common/config.hpp>
 #include <rviz_common/display_context.hpp>
 
-#include <QTimer>
-
 #include "ui_reconfigure.h"
 #include "ui_param_dialog.h"
 #endif
@@ -30,15 +28,25 @@ namespace rviz2_reconfigure
         void onInitialize() override;
         void load(const rviz_common::Config &config) override;
         void save(rviz_common::Config config) const override;
-    
+        
     protected Q_SLOTS:
         void addPushBtn__clicked();
+        void refreshAllValues();
+        
+    protected:
         QTreeWidgetItem* getOrCreateChild(QTreeWidgetItem *parent, const QString &name);
+        void collectLeafItems(QTreeWidgetItem *parent, QList<QTreeWidgetItem*> &leaf_items);
+        void onItemChanged(QTreeWidgetItem *item, int column);
 
     private:
+        enum UserRole {
+            FullPathRole = Qt::UserRole,
+            ParamTypeRole = Qt::UserRole + 1
+        };
         rclcpp::Node::SharedPtr nh_;
         Ui::Reconfigure *ui_;
-        QTimer *ros_timer_;
+        std::vector<rclcpp::Client<rcl_interfaces::srv::GetParameters>::SharedPtr> get_params_clients_;
+        std::vector<rclcpp::Client<rcl_interfaces::srv::SetParameters>::SharedPtr> set_params_clients_;
     };
     
 
@@ -51,12 +59,12 @@ namespace rviz2_reconfigure
         QList<QPair<QString, QString> > getCheckedParams() const;
     
     protected Q_SLOTS:
-        void accept() override;
         void refresh();
-        QTreeWidgetItem* getOrCreateChild(QTreeWidgetItem *parent, const QString &name);
         void onItemChanged(QTreeWidgetItem *item, int column);
+    protected:
         void updateChildCheckState(QTreeWidgetItem *item, Qt::CheckState state);
         void updateParentCheckState(QTreeWidgetItem *item);
+        QTreeWidgetItem* getOrCreateChild(QTreeWidgetItem *parent, const QString &name);
 
     private:
         rclcpp::Node::SharedPtr nh_;

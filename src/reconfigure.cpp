@@ -9,6 +9,8 @@ namespace rviz2_reconfigure
         ui_->listNodeParamValue->sortByColumn(0, Qt::AscendingOrder);
 
         connect(ui_->addPushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::addPushBtn__clicked);
+        connect(ui_->listNodeParamValue, &QTreeWidget::itemChanged, this, &RViz2Reconfigure::onItemChanged);
+        connect(ui_->refreshPushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::refreshAllValues);
     }
 
     RViz2Reconfigure::~RViz2Reconfigure()
@@ -37,10 +39,10 @@ namespace rviz2_reconfigure
         {
             QList<QPair<QString, QString>> checked_params = dialog.getCheckedParams();
 
+            ui_->listNodeParamValue->blockSignals(true); // 追加処理中はシグナルをブロックしてonItemChangedが呼ばれないようにする
+
             for (const auto &param : checked_params)
             {
-                RCLCPP_INFO_STREAM(nh_->get_logger(), "Selected Node: " << param.first.toStdString() << ", Param: " << param.second.toStdString());
-
                 QString node_name = param.first;
                 QString full_path = param.second;
 
@@ -67,15 +69,93 @@ namespace rviz2_reconfigure
                     if (i == parts.size() - 1) {
                         current_parent->setFlags(current_parent->flags() | Qt::ItemIsEditable);
                         // 後でSetParametersするために、このアイテムがどのノードのどのパスか保存しておく
-                        current_parent->setData(0, Qt::UserRole, node_name);
-                        current_parent->setData(1, Qt::UserRole, full_path);
+                        current_parent->setData(0, UserRole::FullPathRole, node_name);
+                        current_parent->setData(1, UserRole::FullPathRole, full_path);
                         current_parent->setText(1, "---"); // 2列目を値の表示用にする
                     }
                 }
 
-            // 追加後に全パラメータの最新値を一括取得する
-            // refreshAllValues();
             }
+            ui_->listNodeParamValue->blockSignals(false); // シグナルのブロックを解除
+
+            // 追加後に全パラメータの最新値を一括取得する
+            refreshAllValues();
+        }
+    }
+
+    void RViz2Reconfigure::refreshAllValues()
+    {
+        // すべてのノードとパラメータのアイテムを収集
+        QList<QTreeWidgetItem*> leaf_items;
+        for (int i = 0; i < ui_->listNodeParamValue->topLevelItemCount(); ++i) {
+            collectLeafItems(ui_->listNodeParamValue->topLevelItem(i), leaf_items);
+        }
+
+        // 2. ノード名ごとにパラメータパスとアイテムを整理
+        // map<ノード名, pair<パスのリスト, アイテムのリスト>>
+        std::map<std::string, std::pair<std::vector<std::string>, std::vector<QTreeWidgetItem*>>> batch_map;
+
+        for (QTreeWidgetItem* item : leaf_items) {
+            std::string node_name = item->data(0, Qt::UserRole).toString().toStdString();
+            std::string full_path = item->data(1, Qt::UserRole).toString().toStdString();
+
+            if (node_name.empty() || full_path.empty()) continue;
+
+            batch_map[node_name].first.push_back(full_path);
+            batch_map[node_name].second.push_back(item);
+        }
+
+        // 3. 各ノードに対して非同期リクエストを送信
+        for (const auto& [node_name, data] : batch_map) {
+            auto client = nh_->create_client<rcl_interfaces::srv::GetParameters>(node_name + "/get_parameters");
+
+            if (!client->wait_for_service(std::chrono::milliseconds(100))) continue;
+            get_params_clients_.push_back(client);
+
+            auto request = std::make_shared<rcl_interfaces::srv::GetParameters::Request>();
+            request->names = data.first;
+
+            auto callback = [this, items = data.second, client](rclcpp::Client<rcl_interfaces::srv::GetParameters>::SharedFuture future) {
+                try {
+                    auto response = future.get();
+                    QMetaObject::invokeMethod(this, [this, items, response](){
+                        // アイテムの更新中はシグナルをブロックしてonItemChangedが呼ばれないようにする
+                        ui_->listNodeParamValue->blockSignals(true);
+                        for (size_t i = 0; i < items.size(); ++i) {
+                            const auto& param_value = response->values[i];
+                            QString value_str;
+
+                            // 値の型に応じて表示形式を変える
+                            switch (param_value.type) {
+                                case rclcpp::ParameterType::PARAMETER_BOOL:
+                                    value_str = param_value.bool_value ? "true" : "false";
+                                    break;
+                                case rclcpp::ParameterType::PARAMETER_INTEGER:
+                                    value_str = QString::number(param_value.integer_value);
+                                    break;
+                                case rclcpp::ParameterType::PARAMETER_DOUBLE:
+                                    value_str = QString::number(param_value.double_value);
+                                    break;
+                                case rclcpp::ParameterType::PARAMETER_STRING:
+                                    value_str = QString::fromStdString(param_value.string_value);
+                                    break;
+                                default:
+                                    value_str = "<unsupported type>";
+                            }
+                            items[i]->setData(0, UserRole::ParamTypeRole, QVariant::fromValue(param_value.type)); // 型情報も保存しておく
+                            items[i]->setText(1, value_str); // 2列目に値を表示
+                        }
+                        // シグナルのブロックを解除
+                        ui_->listNodeParamValue->blockSignals(false);
+                    });
+                } catch (const std::exception &e) {
+                    RCLCPP_ERROR_STREAM(nh_->get_logger(), "Failed to get parameter values: " << e.what());
+                }
+                // コールバックが終わったらクライアントを削除してリストからも消す
+                get_params_clients_.erase(std::remove(get_params_clients_.begin(), get_params_clients_.end(), client), get_params_clients_.end());
+            };
+
+            client->async_send_request(request, callback);
         }
     }
 
@@ -91,6 +171,86 @@ namespace rviz2_reconfigure
         QTreeWidgetItem *new_child = new QTreeWidgetItem(parent);
         new_child->setText(0, name);
         return new_child;
+    }
+
+    void RViz2Reconfigure::collectLeafItems(QTreeWidgetItem *parent, QList<QTreeWidgetItem*> &leaf_items)
+    {
+        for (int i = 0; i < parent->childCount(); ++i) {
+            QTreeWidgetItem* child = parent->child(i);
+            if (child->childCount() == 0) {
+                // 子がいない＝葉ノード（パラメータ）
+                leaf_items.append(child);
+            } else {
+                // 子がいる＝さらに深く探索
+                collectLeafItems(child, leaf_items);
+            }
+        }    
+    }
+
+
+    void RViz2Reconfigure::onItemChanged(QTreeWidgetItem *item, int column)
+    {
+        if (column != 1) return; // 値の列だけ処理
+
+        QString node_name = item->data(0, UserRole::FullPathRole).toString();
+        QString full_path = item->data(1, UserRole::FullPathRole).toString();
+        int param_type = item->data(0, UserRole::ParamTypeRole).toInt();
+        QString new_value_str = item->text(1);
+
+        if (node_name.isEmpty() || full_path.isEmpty()) return;
+
+        auto client = nh_->create_client<rcl_interfaces::srv::SetParameters>(node_name.toStdString() + "/set_parameters");
+        if (!client->wait_for_service(std::chrono::milliseconds(50))) {
+            RCLCPP_ERROR_STREAM(nh_->get_logger(), "Service " << node_name.toStdString() << "/set_parameters not available");
+            return;
+        }
+        set_params_clients_.push_back(client);
+
+        auto request = std::make_shared<rcl_interfaces::srv::SetParameters::Request>();
+        rcl_interfaces::msg::Parameter param;
+        param.name = full_path.toStdString();
+        param.value.type = static_cast<rclcpp::ParameterType>(param_type);
+
+        try {
+            switch (param_type) {
+                case rclcpp::ParameterType::PARAMETER_BOOL:
+                    param.value.bool_value = (new_value_str.toLower() == "true" || new_value_str == "1");
+                    break;
+                case rclcpp::ParameterType::PARAMETER_INTEGER:
+                    param.value.integer_value = new_value_str.toLongLong();
+                    break;
+                case rclcpp::ParameterType::PARAMETER_DOUBLE:
+                    param.value.double_value = new_value_str.toDouble();
+                    break;
+                case rclcpp::ParameterType::PARAMETER_STRING:
+                    param.value.string_value = new_value_str.toStdString();
+                    break;
+                default:
+                    RCLCPP_WARN_STREAM(nh_->get_logger(), "Unsupported parameter type for setting value: " << param_type);
+                    return;
+            }
+        } catch (const std::exception &e) {
+            RCLCPP_ERROR_STREAM(nh_->get_logger(), "Failed to parse new value: " << e.what());
+            return;
+        }
+
+        request->parameters.push_back(param);
+
+        client->async_send_request(request, [this, client, node_name, full_path](rclcpp::Client<rcl_interfaces::srv::SetParameters>::SharedFuture future) {
+            try {
+                auto response = future.get();
+                if (response->results.empty() || !response->results[0].successful) {
+                    throw std::runtime_error(response->results.empty() ? "Unknown" : response->results[0].reason);
+                }
+                RCLCPP_INFO_STREAM(nh_->get_logger(), "Successfully set [" << full_path.toStdString() << "]");
+            } catch (const std::exception &e) {
+                RCLCPP_ERROR_STREAM(nh_->get_logger(), "Failed to set [" << full_path.toStdString() << "]: " << e.what());
+                // 失敗した場合は、再取得して元の値に戻す処理を呼ぶのが望ましい
+                QMetaObject::invokeMethod(this, &RViz2Reconfigure::refreshAllValues);
+            }
+            // コールバックが終わったらクライアントを削除してリストからも消す
+            set_params_clients_.erase(std::remove(set_params_clients_.begin(), set_params_clients_.end(), client), set_params_clients_.end());
+        });
     }
 
     ParamDialog::ParamDialog(rclcpp::Node::SharedPtr node_handle, rviz_common::Panel *parent)
@@ -134,22 +294,15 @@ namespace rviz2_reconfigure
         return selected;
     }
 
-    void ParamDialog::accept()
-    {
-        QDialog::accept();
-    }
-
     void ParamDialog::refresh()
     {
         ui_->listNodeParam->clear();
         list_params_clients_.clear();
 
-        RCLCPP_INFO_STREAM(nh_->get_logger(), nh_->get_node_base_interface()->get_fully_qualified_name());
-
         std::vector<std::string> ns_node_names = nh_->get_node_names();
         if (ns_node_names.empty())
         {
-            RCLCPP_INFO_STREAM(nh_->get_logger(), "No nodes found in the ROS graph.");
+            RCLCPP_WARN_STREAM(nh_->get_logger(), "No nodes found in the ROS graph.");
             return;
         }
         for (const std::string &node_name : ns_node_names)
@@ -160,25 +313,18 @@ namespace rviz2_reconfigure
 
             if (node_name == nh_->get_node_base_interface()->get_fully_qualified_name())
             {
-                RCLCPP_INFO_STREAM(nh_->get_logger(), "Node: " << node_name << " is the current node.");
                 auto names = nh_->list_parameters({}, 0).names;
                 for (const auto& param_name : names) {
-                    RCLCPP_INFO_STREAM(nh_->get_logger(), "Found parameter: " << param_name);
                     QStringList parts = QString::fromStdString(param_name).split('.');
                     QTreeWidgetItem *current_parent = node_item;
-                    for (int i = 0; i < parts.size() - 1; ++i)
+                    for (const auto& part : parts)
                     {
-                        current_parent = getOrCreateChild(current_parent, parts[i]);
+                        current_parent = getOrCreateChild(current_parent, part);
                     }
-                    QTreeWidgetItem *param_item = new QTreeWidgetItem(current_parent);
-                    param_item->setText(0, parts.last());
-                    param_item->setCheckState(0, Qt::Unchecked);
                 }
             }
             else
             {
-                RCLCPP_INFO_STREAM(nh_->get_logger(), "Node: " << node_name);
-
                 auto service_name = node_name + "/list_parameters";
                 auto client = nh_->create_client<rcl_interfaces::srv::ListParameters>(service_name);
 
@@ -195,26 +341,22 @@ namespace rviz2_reconfigure
                 auto request = std::make_shared<rcl_interfaces::srv::ListParameters::Request>();
                 request->depth = 0;
 
-                client->async_send_request(request, [this, node_item](rclcpp::Client<rcl_interfaces::srv::ListParameters>::SharedFuture future) {
+                client->async_send_request(request, [this, node_item, client](rclcpp::Client<rcl_interfaces::srv::ListParameters>::SharedFuture future) {
                     try
                     {
                         auto response = future.get();
-                        RCLCPP_INFO_STREAM(nh_->get_logger(), "Received response for node: " << node_item->text(0).toStdString());
+
                         // QtのメインスレッドでUIを更新（スレッドセーフのため）
-                        QMetaObject::invokeMethod(this, [this, node_item, names = response->result.names](){
+                        QMetaObject::invokeMethod(this, [this, node_item, client, names = response->result.names](){
                             for (const auto& param_name : names) {
-                                RCLCPP_INFO_STREAM(nh_->get_logger(), "Found parameter: " << param_name);
                                 QStringList parts = QString::fromStdString(param_name).split('.');
                                 QTreeWidgetItem *current_parent = node_item;
                                 for (const auto& part : parts)
                                 {
                                     current_parent = getOrCreateChild(current_parent, part);
                                 }
-                                // // QTreeWidgetItem *param_item = new QTreeWidgetItem(current_parent);
-                                // QTreeWidgetItem *param_item = current_parent;
-                                // param_item->setText(0, parts.last());
-                                // param_item->setCheckState(0, Qt::Unchecked);
                             }
+                            list_params_clients_.erase(std::remove(list_params_clients_.begin(), list_params_clients_.end(), client), list_params_clients_.end());
                         });
                     }
                     catch (const std::exception &e)
@@ -224,23 +366,6 @@ namespace rviz2_reconfigure
                 });
             }
         }
-
-        RCLCPP_INFO_STREAM(nh_->get_logger(), "Finished refreshing node and parameter list.");
-    }
-
-    QTreeWidgetItem *ParamDialog::getOrCreateChild(QTreeWidgetItem *parent, const QString &name)
-    {
-        for (int i = 0; i < parent->childCount(); ++i)
-        {
-            if (parent->child(i)->text(0) == name)
-            {
-                return parent->child(i);
-            }
-        }
-        QTreeWidgetItem *new_child = new QTreeWidgetItem(parent);
-        new_child->setText(0, name);
-        new_child->setCheckState(0, Qt::Unchecked);
-        return new_child;
     }
 
     void ParamDialog::onItemChanged(QTreeWidgetItem *item, int column)
@@ -293,6 +418,21 @@ namespace rviz2_reconfigure
         }
 
         updateParentCheckState(parent); // さらに上の親へ
+    }
+
+    QTreeWidgetItem *ParamDialog::getOrCreateChild(QTreeWidgetItem *parent, const QString &name)
+    {
+        for (int i = 0; i < parent->childCount(); ++i)
+        {
+            if (parent->child(i)->text(0) == name)
+            {
+                return parent->child(i);
+            }
+        }
+        QTreeWidgetItem *new_child = new QTreeWidgetItem(parent);
+        new_child->setText(0, name);
+        new_child->setCheckState(0, Qt::Unchecked);
+        return new_child;
     }
 
 } // namespace rviz2_reconfigure

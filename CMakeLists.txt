@@ -31,6 +31,7 @@ add_library(rviz2_reconfigure SHARED
   ${UIC_FILES}
   include/rviz2_reconfigure/reconfigure.hpp
   src/reconfigure.cpp
+  src/icons/icons.qrc
 )
 
 target_compile_features(rviz2_reconfigure PUBLIC c_std_99 cxx_std_17)
@@ -53,10 +54,10 @@ install(
   DIRECTORY include/
   DESTINATION include/${PROJECT_NAME}
 )
-# install(
-#   DIRECTORY icons
-#   DESTINATION share/${PROJECT_NAME}
-# )
+install(
+  DIRECTORY src/icons
+  DESTINATION share/${PROJECT_NAME}
+)
 install(
   TARGETS rviz2_reconfigure
   EXPORT export_${PROJECT_NAME}
