@@ -8,6 +8,16 @@ Parameter reconfigure for RViz2.
 
 Verified to work with ros2 humble (2026/02/22).
 
+## Install
+
+```bash
+cd /your_ros2_ws/src/
+git clone https://github.com/shikishima-TasakiLab/rviz2_reconfigure.git
+cd ..
+colcon build
+source install/setup.bash
+```
+
 ## Contributor
 
 - Google Gemini
