@@ -67,7 +67,7 @@ namespace rviz2_reconfigure
     {
         Q_OBJECT
     public:
-        explicit ParamDialog(rclcpp::Node::SharedPtr node_handle, rviz_common::Panel *parent = nullptr);
+        explicit ParamDialog(rclcpp::Node::SharedPtr node_handle, const QString &panel_name, rviz_common::Panel *parent = nullptr);
         ~ParamDialog();
         QList<QPair<QString, QString> > getCheckedParams() const;
     
@@ -82,6 +82,7 @@ namespace rviz2_reconfigure
     private:
         rclcpp::Node::SharedPtr nh_;
         Ui::ParamDialog *ui_;
+        QString panel_name_;
         std::vector<rclcpp::Client<rcl_interfaces::srv::ListParameters>::SharedPtr> list_params_clients_;
     };
 
