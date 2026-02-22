@@ -3,6 +3,7 @@
 
 #ifndef Q_MOC_RUN
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/logger.hpp>
 #include <rviz_common/panel.hpp>
 #include <rviz_common/config.hpp>
 #include <rviz_common/display_context.hpp>
@@ -58,6 +59,7 @@ namespace rviz2_reconfigure
         rclcpp::Node::SharedPtr nh_;
         rclcpp::TimerBase::SharedPtr auto_refresh_timer_;
         Ui::Reconfigure *ui_;
+        std::shared_ptr<rclcpp::Logger> logger_;
         std::vector<rclcpp::Client<rcl_interfaces::srv::GetParameters>::SharedPtr> get_params_clients_;
         std::vector<rclcpp::Client<rcl_interfaces::srv::SetParameters>::SharedPtr> set_params_clients_;
     };
@@ -67,7 +69,7 @@ namespace rviz2_reconfigure
     {
         Q_OBJECT
     public:
-        explicit ParamDialog(rclcpp::Node::SharedPtr node_handle, const QString &panel_name, rviz_common::Panel *parent = nullptr);
+        explicit ParamDialog(rclcpp::Node::SharedPtr node_handle, const std::shared_ptr<rclcpp::Logger> &logger, rviz_common::Panel *parent = nullptr);
         ~ParamDialog();
         QList<QPair<QString, QString> > getCheckedParams() const;
     
@@ -82,7 +84,7 @@ namespace rviz2_reconfigure
     private:
         rclcpp::Node::SharedPtr nh_;
         Ui::ParamDialog *ui_;
-        QString panel_name_;
+        std::shared_ptr<rclcpp::Logger> logger_;
         std::vector<rclcpp::Client<rcl_interfaces::srv::ListParameters>::SharedPtr> list_params_clients_;
     };
 

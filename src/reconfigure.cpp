@@ -24,6 +24,7 @@ namespace rviz2_reconfigure
     void RViz2Reconfigure::onInitialize()
     {
         nh_ = getDisplayContext()->getRosNodeAbstraction().lock()->get_raw_node();
+        logger_ = std::make_shared<rclcpp::Logger>(nh_->get_logger().get_child(getName().toStdString()));
     }
 
     void RViz2Reconfigure::load(const rviz_common::Config &config)
@@ -83,7 +84,7 @@ namespace rviz2_reconfigure
 
     void RViz2Reconfigure::addPushBtn__clicked()
     {
-        ParamDialog dialog(nh_, getName(), this);
+        ParamDialog dialog(nh_, logger_, this);
         if (dialog.exec() == QDialog::Accepted)
         {
             loadParamsToTree(dialog.getCheckedParams());
@@ -155,7 +156,7 @@ namespace rviz2_reconfigure
                         }
                     });
                 } catch (const std::exception &e) {
-                    RCLCPP_ERROR_STREAM(nh_->get_logger(), "[" << getName().toStdString() << "]: Failed to get parameter values: " << e.what());
+                    RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Failed to get parameter values: " << e.what());
                 }
                 // シグナルのブロックを解除
                 ui_->listNodeParamValue->blockSignals(false);
@@ -180,7 +181,7 @@ namespace rviz2_reconfigure
 
         auto client = nh_->create_client<rcl_interfaces::srv::SetParameters>(node_name.toStdString() + "/set_parameters");
         if (!client->wait_for_service(std::chrono::milliseconds(50))) {
-            RCLCPP_ERROR_STREAM(nh_->get_logger(), "[" << getName().toStdString() << "]: Service " << node_name.toStdString() << "/set_parameters not available");
+            RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Service " << node_name.toStdString() << "/set_parameters not available");
             return;
         }
         set_params_clients_.push_back(client);
@@ -206,11 +207,11 @@ namespace rviz2_reconfigure
                     param.value.string_value = new_value_str.toStdString();
                     break;
                 default:
-                    RCLCPP_WARN_STREAM(nh_->get_logger(), "[" << getName().toStdString() << "]: Unsupported parameter type for setting value: " << param_type);
+                    RCLCPP_WARN_STREAM(*logger_, "[" << getName().toStdString() << "]: Unsupported parameter type for setting value: " << param_type);
                     return;
             }
         } catch (const std::exception &e) {
-            RCLCPP_ERROR_STREAM(nh_->get_logger(), "[" << getName().toStdString() << "]: Failed to parse new value: " << e.what());
+            RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Failed to parse new value: " << e.what());
             return;
         }
 
@@ -222,9 +223,9 @@ namespace rviz2_reconfigure
                 if (response->results.empty() || !response->results[0].successful) {
                     throw std::runtime_error(response->results.empty() ? "Unknown" : response->results[0].reason);
                 }
-                RCLCPP_INFO_STREAM(nh_->get_logger(), "[" << getName().toStdString() << "]: Successfully set [" << full_path.toStdString() << "]: " << new_value_str.toStdString());
+                RCLCPP_INFO_STREAM(*logger_, "[" << getName().toStdString() << "]: Successfully set [" << full_path.toStdString() << "]: " << new_value_str.toStdString());
             } catch (const std::exception &e) {
-                RCLCPP_ERROR_STREAM(nh_->get_logger(), "[" << getName().toStdString() << "]: Failed to set [" << full_path.toStdString() << "]: " << e.what());
+                RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Failed to set [" << full_path.toStdString() << "]: " << e.what());
                 // 失敗した場合は、再取得して元の値に戻す処理を呼ぶのが望ましい
                 QMetaObject::invokeMethod(this, &RViz2Reconfigure::refreshAllValues);
             }
@@ -375,8 +376,8 @@ namespace rviz2_reconfigure
     }
 
 
-    ParamDialog::ParamDialog(rclcpp::Node::SharedPtr node_handle, const QString &panel_name, rviz_common::Panel *parent)
-        : QDialog(parent), nh_(node_handle), ui_(new Ui::ParamDialog()), panel_name_(panel_name)
+    ParamDialog::ParamDialog(rclcpp::Node::SharedPtr node_handle, const std::shared_ptr<rclcpp::Logger> &logger, rviz_common::Panel *parent)
+        : QDialog(parent), nh_(node_handle), ui_(new Ui::ParamDialog()), logger_(logger)
     {
         ui_->setupUi(this);
         ui_->listNodeParam->sortByColumn(0, Qt::AscendingOrder);
@@ -424,7 +425,7 @@ namespace rviz2_reconfigure
         std::vector<std::string> ns_node_names = nh_->get_node_names();
         if (ns_node_names.empty())
         {
-            RCLCPP_WARN_STREAM(nh_->get_logger(), "[" << panel_name_.toStdString() << "]: No nodes found in the ROS graph.");
+            RCLCPP_WARN_STREAM(*logger_, "No nodes found in the ROS graph.");
             return;
         }
         for (const std::string &node_name : ns_node_names)
@@ -456,7 +457,7 @@ namespace rviz2_reconfigure
                 {
                     node_item->setDisabled(true);
                     // node_item->setText(0, node_item->text(0) + " (Service Offline)");
-                    RCLCPP_WARN_STREAM(nh_->get_logger(), "[" << panel_name_.toStdString() << "]: Service " << service_name << " not available for node: " << node_name);
+                    RCLCPP_WARN_STREAM(*logger_, "Service " << service_name << " not available for node: " << node_name);
                     continue;
                 }
 
@@ -483,7 +484,7 @@ namespace rviz2_reconfigure
                     }
                     catch (const std::exception &e)
                     {
-                        RCLCPP_ERROR_STREAM(nh_->get_logger(), "[" << panel_name_.toStdString() << "]: Failed to list parameters: " << e.what());
+                        RCLCPP_ERROR_STREAM(*logger_, "Failed to list parameters: " << e.what());
                     }
                 });
             }
