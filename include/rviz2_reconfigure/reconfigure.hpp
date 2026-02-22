@@ -7,6 +7,13 @@
 #include <rviz_common/config.hpp>
 #include <rviz_common/display_context.hpp>
 
+#include <QCheckBox>
+#include <QDialog>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QStyledItemDelegate>
+#include <QTreeWidget>
+
 #include "ui_reconfigure.h"
 #include "ui_param_dialog.h"
 #endif
@@ -28,22 +35,28 @@ namespace rviz2_reconfigure
         void onInitialize() override;
         void load(const rviz_common::Config &config) override;
         void save(rviz_common::Config config) const override;
-        
-    protected Q_SLOTS:
-        void addPushBtn__clicked();
-        void refreshAllValues();
-        
-    protected:
-        QTreeWidgetItem* getOrCreateChild(QTreeWidgetItem *parent, const QString &name);
-        void collectLeafItems(QTreeWidgetItem *parent, QList<QTreeWidgetItem*> &leaf_items);
-        void onItemChanged(QTreeWidgetItem *item, int column);
 
-    private:
         enum UserRole {
             FullPathRole = Qt::UserRole,
             ParamTypeRole = Qt::UserRole + 1
         };
+
+    protected Q_SLOTS:
+        void addPushBtn__clicked();
+        void refreshAllValues();
+        void onItemChanged(QTreeWidgetItem *item, int column);
+        void autoRefreshChkBox__CheckStateChanged(int state);
+        void removePushBtn__clicked();
+        
+    protected:
+        QTreeWidgetItem* getOrCreateChild(QTreeWidgetItem *parent, const QString &name);
+        void collectLeafItems(QTreeWidgetItem *parent, QList<QTreeWidgetItem*> &leaf_items) const;
+        void loadParamsToTree(const QList<QPair<QString, QString>> &params_to_load);
+        void checkAndRemoveEmptyParents(QTreeWidgetItem *parent);
+
+    private:
         rclcpp::Node::SharedPtr nh_;
+        rclcpp::TimerBase::SharedPtr auto_refresh_timer_;
         Ui::Reconfigure *ui_;
         std::vector<rclcpp::Client<rcl_interfaces::srv::GetParameters>::SharedPtr> get_params_clients_;
         std::vector<rclcpp::Client<rcl_interfaces::srv::SetParameters>::SharedPtr> set_params_clients_;
@@ -70,6 +83,15 @@ namespace rviz2_reconfigure
         rclcpp::Node::SharedPtr nh_;
         Ui::ParamDialog *ui_;
         std::vector<rclcpp::Client<rcl_interfaces::srv::ListParameters>::SharedPtr> list_params_clients_;
+    };
+
+
+    class ParamEditorDelegate : public QStyledItemDelegate
+    {
+        Q_OBJECT
+    public:
+        ParamEditorDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
+        QWidget* createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
     };
 
 } // namespace rviz2_reconfigure

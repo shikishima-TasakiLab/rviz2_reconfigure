@@ -7,10 +7,14 @@ namespace rviz2_reconfigure
     {
         ui_->setupUi(this);
         ui_->listNodeParamValue->sortByColumn(0, Qt::AscendingOrder);
+        ui_->listNodeParamValue->setItemDelegateForColumn(1, new ParamEditorDelegate(this)); // 2列目の編集はParamEditorDelegateに任せる
 
         connect(ui_->addPushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::addPushBtn__clicked);
         connect(ui_->listNodeParamValue, &QTreeWidget::itemChanged, this, &RViz2Reconfigure::onItemChanged);
         connect(ui_->refreshPushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::refreshAllValues);
+        connect(ui_->autoRefreshChkBox, &QCheckBox::stateChanged, this, &RViz2Reconfigure::autoRefreshChkBox__CheckStateChanged);
+        // connect(ui_->autoRefreshChkBox, &QCheckBox::checkStateChanged, this, &RViz2Reconfigure::autoRefreshChkBox__CheckStateChanged); since Qt 6.7
+        connect(ui_->removePushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::removePushBtn__clicked);
     }
 
     RViz2Reconfigure::~RViz2Reconfigure()
@@ -25,11 +29,56 @@ namespace rviz2_reconfigure
     void RViz2Reconfigure::load(const rviz_common::Config &config)
     {
         rviz_common::Panel::load(config);
+
+        rviz_common::Config params_config = config.mapGetChild("selected_params");
+        if (!params_config.isValid() || params_config.getType() != rviz_common::Config::List) {
+            return; // ロードするパラメータがない場合は何もしない
+        }
+
+        QList<QPair<QString, QString>> params_to_load;
+
+        size_t num_items = params_config.listLength();
+        for (size_t i = 0; i < num_items; ++i) {
+            rviz_common::Config item_config = params_config.listChildAt(i);
+            if (!item_config.isValid() || item_config.getType() != rviz_common::Config::Map) {
+                continue; // アイテムの形式が不正な場合はスキップ
+            }
+            QString node_name = item_config.mapGetChild("node_name").getType() == rviz_common::Config::Value
+                                    ? item_config.mapGetChild("node_name").getValue().toString()
+                                    : QString();
+            QString full_path = item_config.mapGetChild("full_path").getType() == rviz_common::Config::Value
+                                    ? item_config.mapGetChild("full_path").getValue().toString()
+                                    : QString();
+            if (node_name.isEmpty() || full_path.isEmpty()) continue; // ノード名やフルパスが空の場合はスキップ
+            params_to_load.append(QPair<QString, QString>(node_name, full_path));
+        }
+
+        ui_->listNodeParamValue->clear();
+        loadParamsToTree(params_to_load);
     }
 
     void RViz2Reconfigure::save(rviz_common::Config config) const
     {
         rviz_common::Panel::save(config);
+
+        rviz_common::Config params_config = config.mapMakeChild("selected_params");
+
+        QList<QTreeWidgetItem*> leaf_items;
+        for (int i = 0; i < ui_->listNodeParamValue->topLevelItemCount(); ++i) {
+            collectLeafItems(ui_->listNodeParamValue->topLevelItem(i), leaf_items);
+        }
+
+        for (QTreeWidgetItem* item : leaf_items) {
+            QString node_name = item->data(0, UserRole::FullPathRole).toString();
+            QString full_path = item->data(1, UserRole::FullPathRole).toString();
+
+            if (node_name.isEmpty() || full_path.isEmpty()) continue;
+
+            rviz_common::Config item_config = params_config.listAppendNew();
+
+            item_config.mapSetValue("node_name", node_name);
+            item_config.mapSetValue("full_path", full_path);
+        }
     }
 
     void RViz2Reconfigure::addPushBtn__clicked()
@@ -37,49 +86,7 @@ namespace rviz2_reconfigure
         ParamDialog dialog(nh_, this);
         if (dialog.exec() == QDialog::Accepted)
         {
-            QList<QPair<QString, QString>> checked_params = dialog.getCheckedParams();
-
-            ui_->listNodeParamValue->blockSignals(true); // 追加処理中はシグナルをブロックしてonItemChangedが呼ばれないようにする
-
-            for (const auto &param : checked_params)
-            {
-                QString node_name = param.first;
-                QString full_path = param.second;
-
-                // 1. ノード名のトップレベルアイテムを探す（なければ作成）
-                QTreeWidgetItem* node_item = nullptr;
-                for (int i = 0; i < ui_->listNodeParamValue->topLevelItemCount(); ++i) {
-                    if (ui_->listNodeParamValue->topLevelItem(i)->text(0) == node_name) {
-                        node_item = ui_->listNodeParamValue->topLevelItem(i);
-                        break;
-                    }
-                }
-                if (!node_item) {
-                    node_item = new QTreeWidgetItem(ui_->listNodeParamValue, {node_name});
-                }
-
-                // 2. パラメータの階層をドットで分割して展開
-                QStringList parts = full_path.split('.');
-                QTreeWidgetItem* current_parent = node_item;
-
-                for (int i = 0; i < parts.size(); ++i) {
-                    current_parent = getOrCreateChild(current_parent, parts[i]);
-                    
-                    // 3. 最後の要素（葉ノード）だけ編集可能にし、フルパスを隠しデータとして持たせる
-                    if (i == parts.size() - 1) {
-                        current_parent->setFlags(current_parent->flags() | Qt::ItemIsEditable);
-                        // 後でSetParametersするために、このアイテムがどのノードのどのパスか保存しておく
-                        current_parent->setData(0, UserRole::FullPathRole, node_name);
-                        current_parent->setData(1, UserRole::FullPathRole, full_path);
-                        current_parent->setText(1, "---"); // 2列目を値の表示用にする
-                    }
-                }
-
-            }
-            ui_->listNodeParamValue->blockSignals(false); // シグナルのブロックを解除
-
-            // 追加後に全パラメータの最新値を一括取得する
-            refreshAllValues();
+            loadParamsToTree(dialog.getCheckedParams());
         }
     }
 
@@ -123,34 +130,35 @@ namespace rviz2_reconfigure
                         ui_->listNodeParamValue->blockSignals(true);
                         for (size_t i = 0; i < items.size(); ++i) {
                             const auto& param_value = response->values[i];
-                            QString value_str;
 
                             // 値の型に応じて表示形式を変える
                             switch (param_value.type) {
                                 case rclcpp::ParameterType::PARAMETER_BOOL:
-                                    value_str = param_value.bool_value ? "true" : "false";
+                                    items[i]->setText(1, ""); // 2列目に値を表示
+                                    items[i]->setCheckState(1, param_value.bool_value ? Qt::Checked : Qt::Unchecked); // チェックボックスで表示
+                                    items[i]->setFlags(items[i]->flags() & ~Qt::ItemIsEditable); // 編集不可にする
+                                    items[i]->setFlags(items[i]->flags() | Qt::ItemIsUserCheckable); // チェックボックスを有効にする
                                     break;
                                 case rclcpp::ParameterType::PARAMETER_INTEGER:
-                                    value_str = QString::number(param_value.integer_value);
+                                    items[i]->setText(1, QString::number(param_value.integer_value)); // 2列目に値を表示
                                     break;
                                 case rclcpp::ParameterType::PARAMETER_DOUBLE:
-                                    value_str = QString::number(param_value.double_value);
+                                    items[i]->setText(1, QString::number(param_value.double_value)); // 2列目に値を表示
                                     break;
                                 case rclcpp::ParameterType::PARAMETER_STRING:
-                                    value_str = QString::fromStdString(param_value.string_value);
+                                    items[i]->setText(1, QString::fromStdString(param_value.string_value)); // 2列目に値を表示
                                     break;
                                 default:
-                                    value_str = "<unsupported type>";
+                                    items[i]->setText(1, "<unsupported type>"); // 2列目に値を表示
                             }
-                            items[i]->setData(0, UserRole::ParamTypeRole, QVariant::fromValue(param_value.type)); // 型情報も保存しておく
-                            items[i]->setText(1, value_str); // 2列目に値を表示
+                            items[i]->setData(1, UserRole::ParamTypeRole, QVariant::fromValue(param_value.type)); // 型情報も保存しておく
                         }
-                        // シグナルのブロックを解除
-                        ui_->listNodeParamValue->blockSignals(false);
                     });
                 } catch (const std::exception &e) {
                     RCLCPP_ERROR_STREAM(nh_->get_logger(), "Failed to get parameter values: " << e.what());
                 }
+                // シグナルのブロックを解除
+                ui_->listNodeParamValue->blockSignals(false);
                 // コールバックが終わったらクライアントを削除してリストからも消す
                 get_params_clients_.erase(std::remove(get_params_clients_.begin(), get_params_clients_.end(), client), get_params_clients_.end());
             };
@@ -159,42 +167,13 @@ namespace rviz2_reconfigure
         }
     }
 
-    QTreeWidgetItem* RViz2Reconfigure::getOrCreateChild(QTreeWidgetItem *parent, const QString &name)
-    {
-        for (int i = 0; i < parent->childCount(); ++i)
-        {
-            if (parent->child(i)->text(0) == name)
-            {
-                return parent->child(i);
-            }
-        }
-        QTreeWidgetItem *new_child = new QTreeWidgetItem(parent);
-        new_child->setText(0, name);
-        return new_child;
-    }
-
-    void RViz2Reconfigure::collectLeafItems(QTreeWidgetItem *parent, QList<QTreeWidgetItem*> &leaf_items)
-    {
-        for (int i = 0; i < parent->childCount(); ++i) {
-            QTreeWidgetItem* child = parent->child(i);
-            if (child->childCount() == 0) {
-                // 子がいない＝葉ノード（パラメータ）
-                leaf_items.append(child);
-            } else {
-                // 子がいる＝さらに深く探索
-                collectLeafItems(child, leaf_items);
-            }
-        }    
-    }
-
-
     void RViz2Reconfigure::onItemChanged(QTreeWidgetItem *item, int column)
     {
         if (column != 1) return; // 値の列だけ処理
 
         QString node_name = item->data(0, UserRole::FullPathRole).toString();
         QString full_path = item->data(1, UserRole::FullPathRole).toString();
-        int param_type = item->data(0, UserRole::ParamTypeRole).toInt();
+        int param_type = item->data(1, UserRole::ParamTypeRole).toInt();
         QString new_value_str = item->text(1);
 
         if (node_name.isEmpty() || full_path.isEmpty()) return;
@@ -214,7 +193,8 @@ namespace rviz2_reconfigure
         try {
             switch (param_type) {
                 case rclcpp::ParameterType::PARAMETER_BOOL:
-                    param.value.bool_value = (new_value_str.toLower() == "true" || new_value_str == "1");
+                    param.value.bool_value = (item->checkState(1) == Qt::Checked); // チェックボックスの状態から値を決定
+                    new_value_str = (param.value.bool_value) ? "true" : "false"; // ログ用に文字列も更新
                     break;
                 case rclcpp::ParameterType::PARAMETER_INTEGER:
                     param.value.integer_value = new_value_str.toLongLong();
@@ -236,13 +216,13 @@ namespace rviz2_reconfigure
 
         request->parameters.push_back(param);
 
-        client->async_send_request(request, [this, client, node_name, full_path](rclcpp::Client<rcl_interfaces::srv::SetParameters>::SharedFuture future) {
+        client->async_send_request(request, [this, client, node_name, full_path, new_value_str](rclcpp::Client<rcl_interfaces::srv::SetParameters>::SharedFuture future) {
             try {
                 auto response = future.get();
                 if (response->results.empty() || !response->results[0].successful) {
                     throw std::runtime_error(response->results.empty() ? "Unknown" : response->results[0].reason);
                 }
-                RCLCPP_INFO_STREAM(nh_->get_logger(), "Successfully set [" << full_path.toStdString() << "]");
+                RCLCPP_INFO_STREAM(nh_->get_logger(), "Successfully set [" << full_path.toStdString() << "]: " << new_value_str.toStdString());
             } catch (const std::exception &e) {
                 RCLCPP_ERROR_STREAM(nh_->get_logger(), "Failed to set [" << full_path.toStdString() << "]: " << e.what());
                 // 失敗した場合は、再取得して元の値に戻す処理を呼ぶのが望ましい
@@ -252,6 +232,148 @@ namespace rviz2_reconfigure
             set_params_clients_.erase(std::remove(set_params_clients_.begin(), set_params_clients_.end(), client), set_params_clients_.end());
         });
     }
+
+    void RViz2Reconfigure::autoRefreshChkBox__CheckStateChanged(int state)
+    {
+        switch (state) {
+            case Qt::Checked:
+                ui_->autoRefreshSpinBox->setEnabled(false);
+                auto_refresh_timer_ = nh_->create_wall_timer(
+                    std::chrono::milliseconds(static_cast<int>(ui_->autoRefreshSpinBox->value() * 1000.0)),
+                    std::bind(&RViz2Reconfigure::refreshAllValues, this)
+                );
+                break;
+            case Qt::Unchecked:
+                if (auto_refresh_timer_) {
+                    auto_refresh_timer_->cancel();
+                    auto_refresh_timer_.reset();
+                }
+                ui_->autoRefreshSpinBox->setEnabled(true);
+                break;
+            default:
+                ui_->autoRefreshSpinBox->setEnabled(true);
+                break;
+        }
+    }
+
+    void RViz2Reconfigure::removePushBtn__clicked()
+    {
+        QList<QTreeWidgetItem*> selected_items = ui_->listNodeParamValue->selectedItems();
+
+        if (selected_items.isEmpty()) return;
+
+        for (QTreeWidgetItem* item : selected_items) {
+            QTreeWidgetItem* parent = item->parent();
+            if (parent) {
+                // 中間階層やノード配下の場合
+                parent->removeChild(item);
+            } else {
+                // トップレベル（ノード名）の場合
+                int index = ui_->listNodeParamValue->indexOfTopLevelItem(item);
+                if (index != -1) {
+                    ui_->listNodeParamValue->takeTopLevelItem(index);
+                }
+            }
+            delete item; // アイテムを削除してメモリも解放
+
+            checkAndRemoveEmptyParents(parent); // 親が空になったら再帰的に削除していく
+        }
+    }
+
+    QTreeWidgetItem* RViz2Reconfigure::getOrCreateChild(QTreeWidgetItem *parent, const QString &name)
+    {
+        for (int i = 0; i < parent->childCount(); ++i)
+        {
+            if (parent->child(i)->text(0) == name)
+            {
+                return parent->child(i);
+            }
+        }
+        QTreeWidgetItem *new_child = new QTreeWidgetItem(parent);
+        new_child->setText(0, name);
+        return new_child;
+    }
+
+    void RViz2Reconfigure::collectLeafItems(QTreeWidgetItem *parent, QList<QTreeWidgetItem*> &leaf_items) const
+    {
+        for (int i = 0; i < parent->childCount(); ++i) {
+            QTreeWidgetItem* child = parent->child(i);
+            if (child->childCount() == 0) {
+                // 子がいない＝葉ノード（パラメータ）
+                leaf_items.append(child);
+            } else {
+                // 子がいる＝さらに深く探索
+                collectLeafItems(child, leaf_items);
+            }
+        }    
+    }
+
+    void RViz2Reconfigure::loadParamsToTree(const QList<QPair<QString, QString>> &params_to_load)
+    {
+        ui_->listNodeParamValue->blockSignals(true); // 追加処理中はシグナルをブロックしてonItemChangedが呼ばれないようにする
+
+        for (const auto &param : params_to_load)
+        {
+            QString node_name = param.first;
+            QString full_path = param.second;
+
+            // 1. ノード名のトップレベルアイテムを探す（なければ作成）
+            QTreeWidgetItem* node_item = nullptr;
+            for (int i = 0; i < ui_->listNodeParamValue->topLevelItemCount(); ++i) {
+                if (ui_->listNodeParamValue->topLevelItem(i)->text(0) == node_name) {
+                    node_item = ui_->listNodeParamValue->topLevelItem(i);
+                    break;
+                }
+            }
+            if (!node_item) {
+                node_item = new QTreeWidgetItem(ui_->listNodeParamValue, {node_name});
+            }
+
+            // 2. パラメータの階層をドットで分割して展開
+            QStringList parts = full_path.split('.');
+            QTreeWidgetItem* current_parent = node_item;
+
+            for (int i = 0; i < parts.size(); ++i) {
+                current_parent = getOrCreateChild(current_parent, parts[i]);
+                
+                // 3. 最後の要素（葉ノード）だけ編集可能にし、フルパスを隠しデータとして持たせる
+                if (i == parts.size() - 1) {
+                    current_parent->setFlags(current_parent->flags() | Qt::ItemIsEditable);
+                    // 後でSetParametersするために、このアイテムがどのノードのどのパスか保存しておく
+                    current_parent->setData(0, UserRole::FullPathRole, node_name);
+                    current_parent->setData(1, UserRole::FullPathRole, full_path);
+                    current_parent->setText(1, "---"); // 2列目を値の表示用にする
+                }
+            }
+
+        }
+        ui_->listNodeParamValue->blockSignals(false); // シグナルのブロックを解除
+
+        // 追加後に全パラメータの最新値を一括取得する
+        refreshAllValues();
+    }
+
+    void RViz2Reconfigure::checkAndRemoveEmptyParents(QTreeWidgetItem *parent)
+    {
+        if (!parent) return;
+
+        if (parent->childCount() == 0) {
+            QTreeWidgetItem* grandparent = parent->parent();
+            if (grandparent) {
+                grandparent->removeChild(parent);
+                delete parent; // メモリも解放
+                checkAndRemoveEmptyParents(grandparent); // 再帰的に上の階層もチェック
+            } else {
+                // トップレベルアイテムの場合は直接削除
+                int index = ui_->listNodeParamValue->indexOfTopLevelItem(parent);
+                if (index != -1) {
+                    ui_->listNodeParamValue->takeTopLevelItem(index);
+                    delete parent; // メモリも解放
+                }
+            }
+        }
+    }
+
 
     ParamDialog::ParamDialog(rclcpp::Node::SharedPtr node_handle, rviz_common::Panel *parent)
         : QDialog(parent), nh_(node_handle), ui_(new Ui::ParamDialog())
@@ -433,6 +555,41 @@ namespace rviz2_reconfigure
         new_child->setText(0, name);
         new_child->setCheckState(0, Qt::Unchecked);
         return new_child;
+    }
+
+
+    QWidget* ParamEditorDelegate::createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const
+    {
+        QWidget* editor = QStyledItemDelegate::createEditor(parent, option, index);
+        QLineEdit* line_edit = qobject_cast<QLineEdit*>(editor);
+
+        if (line_edit) {
+            int param_type = index.data(RViz2Reconfigure::ParamTypeRole).toInt();
+
+            switch (param_type) {
+                case rclcpp::ParameterType::PARAMETER_BOOL:
+                {
+                    line_edit->setReadOnly(true); // boolはチェックボックスで編集するのでテキスト編集は不可にする
+                } break;
+                case rclcpp::ParameterType::PARAMETER_INTEGER:
+                {
+                    line_edit->setValidator(new QIntValidator(line_edit));
+                } break;
+                case rclcpp::ParameterType::PARAMETER_DOUBLE:
+                {
+                    auto* varidator = new QDoubleValidator(line_edit);
+                    varidator->setNotation(QDoubleValidator::StandardNotation);
+                    line_edit->setValidator(varidator);
+                } break;
+                case rclcpp::ParameterType::PARAMETER_STRING:
+                    // 文字列は特に制限なし
+                    break;
+                default:
+                    line_edit->setReadOnly(true); // サポート外の型は編集不可にする
+                    break;
+            }
+        }
+        return editor;
     }
 
 } // namespace rviz2_reconfigure

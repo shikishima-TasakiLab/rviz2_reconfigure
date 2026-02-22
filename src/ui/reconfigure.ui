@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Reconfigure</string>
+   <string>RViz2 Reconfigure</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -30,9 +30,6 @@
     <widget class="QTreeWidget" name="listNodeParamValue">
      <property name="dragEnabled">
       <bool>true</bool>
-     </property>
-     <property name="selectionMode">
-      <enum>QAbstractItemView::MultiSelection</enum>
      </property>
      <property name="sortingEnabled">
       <bool>true</bool>
