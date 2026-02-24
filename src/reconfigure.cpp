@@ -31,36 +31,52 @@ namespace rviz2_reconfigure
     {
         rviz_common::Panel::load(config);
 
+        rviz_common::Config refresh_config = config.mapGetChild("refresh");
+        if (refresh_config.isValid() && refresh_config.getType() == rviz_common::Config::Map) {
+            bool auto_refresh = refresh_config.mapGetChild("auto_refresh").getType() == rviz_common::Config::Value
+                                    ? refresh_config.mapGetChild("auto_refresh").getValue().toBool()
+                                    : false;
+            double refresh_interval = refresh_config.mapGetChild("refresh_interval").getType() == rviz_common::Config::Value
+                                            ? refresh_config.mapGetChild("refresh_interval").getValue().toDouble()
+                                            : 5.0;
+
+            ui_->autoRefreshChkBox->setChecked(auto_refresh);
+            ui_->autoRefreshSpinBox->setValue(refresh_interval);
+        }
+
         rviz_common::Config params_config = config.mapGetChild("selected_params");
-        if (!params_config.isValid() || params_config.getType() != rviz_common::Config::List) {
-            return; // ロードするパラメータがない場合は何もしない
-        }
+        if (params_config.isValid() && params_config.getType() == rviz_common::Config::List) {
+            QList<QPair<QString, QString>> params_to_load;
 
-        QList<QPair<QString, QString>> params_to_load;
-
-        size_t num_items = params_config.listLength();
-        for (size_t i = 0; i < num_items; ++i) {
-            rviz_common::Config item_config = params_config.listChildAt(i);
-            if (!item_config.isValid() || item_config.getType() != rviz_common::Config::Map) {
-                continue; // アイテムの形式が不正な場合はスキップ
+            size_t num_items = params_config.listLength();
+            for (size_t i = 0; i < num_items; ++i) {
+                rviz_common::Config item_config = params_config.listChildAt(i);
+                if (!item_config.isValid() || item_config.getType() != rviz_common::Config::Map) {
+                    continue; // アイテムの形式が不正な場合はスキップ
+                }
+                QString node_name = item_config.mapGetChild("node_name").getType() == rviz_common::Config::Value
+                                        ? item_config.mapGetChild("node_name").getValue().toString()
+                                        : QString();
+                QString full_path = item_config.mapGetChild("full_path").getType() == rviz_common::Config::Value
+                                        ? item_config.mapGetChild("full_path").getValue().toString()
+                                        : QString();
+                if (node_name.isEmpty() || full_path.isEmpty()) continue; // ノード名やフルパスが空の場合はスキップ
+                params_to_load.append(QPair<QString, QString>(node_name, full_path));
             }
-            QString node_name = item_config.mapGetChild("node_name").getType() == rviz_common::Config::Value
-                                    ? item_config.mapGetChild("node_name").getValue().toString()
-                                    : QString();
-            QString full_path = item_config.mapGetChild("full_path").getType() == rviz_common::Config::Value
-                                    ? item_config.mapGetChild("full_path").getValue().toString()
-                                    : QString();
-            if (node_name.isEmpty() || full_path.isEmpty()) continue; // ノード名やフルパスが空の場合はスキップ
-            params_to_load.append(QPair<QString, QString>(node_name, full_path));
+
+            ui_->listNodeParamValue->clear();
+            loadParamsToTree(params_to_load);
         }
 
-        ui_->listNodeParamValue->clear();
-        loadParamsToTree(params_to_load);
     }
 
     void RViz2Reconfigure::save(rviz_common::Config config) const
     {
         rviz_common::Panel::save(config);
+
+        rviz_common::Config refresh_config = config.mapMakeChild("refresh");
+        refresh_config.mapSetValue("auto_refresh", ui_->autoRefreshChkBox->isChecked());
+        refresh_config.mapSetValue("refresh_interval", ui_->autoRefreshSpinBox->value());
 
         rviz_common::Config params_config = config.mapMakeChild("selected_params");
 
