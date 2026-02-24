@@ -15,6 +15,8 @@ namespace rviz2_reconfigure
         connect(ui_->autoRefreshChkBox, &QCheckBox::stateChanged, this, &RViz2Reconfigure::autoRefreshChkBox__CheckStateChanged);
         // connect(ui_->autoRefreshChkBox, &QCheckBox::checkStateChanged, this, &RViz2Reconfigure::autoRefreshChkBox__CheckStateChanged); since Qt 6.7
         connect(ui_->removePushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::removePushBtn__clicked);
+        connect(ui_->importPushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::importPushBtn__clicked);
+        connect(ui_->exportPushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::exportPushBtn__clicked);
     }
 
     RViz2Reconfigure::~RViz2Reconfigure()
@@ -172,7 +174,7 @@ namespace rviz2_reconfigure
                         }
                     });
                 } catch (const std::exception &e) {
-                    RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Failed to get parameter values: " << e.what());
+                    RCLCPP_ERROR_STREAM(*logger_, "Failed to get parameter values: " << e.what());
                 }
                 // シグナルのブロックを解除
                 ui_->listNodeParamValue->blockSignals(false);
@@ -197,7 +199,7 @@ namespace rviz2_reconfigure
 
         auto client = nh_->create_client<rcl_interfaces::srv::SetParameters>(node_name.toStdString() + "/set_parameters");
         if (!client->wait_for_service(std::chrono::milliseconds(50))) {
-            RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Service " << node_name.toStdString() << "/set_parameters not available");
+            RCLCPP_ERROR_STREAM(*logger_, "Service " << node_name.toStdString() << "/set_parameters not available");
             return;
         }
         set_params_clients_.push_back(client);
@@ -223,11 +225,11 @@ namespace rviz2_reconfigure
                     param.value.string_value = new_value_str.toStdString();
                     break;
                 default:
-                    RCLCPP_WARN_STREAM(*logger_, "[" << getName().toStdString() << "]: Unsupported parameter type for setting value: " << param_type);
+                    RCLCPP_WARN_STREAM(*logger_, "Unsupported parameter type for setting value: " << param_type);
                     return;
             }
         } catch (const std::exception &e) {
-            RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Failed to parse new value: " << e.what());
+            RCLCPP_ERROR_STREAM(*logger_, "Failed to parse new value: " << e.what());
             return;
         }
 
@@ -239,9 +241,9 @@ namespace rviz2_reconfigure
                 if (response->results.empty() || !response->results[0].successful) {
                     throw std::runtime_error(response->results.empty() ? "Unknown" : response->results[0].reason);
                 }
-                RCLCPP_INFO_STREAM(*logger_, "[" << getName().toStdString() << "]: Successfully set [" << full_path.toStdString() << "]: " << new_value_str.toStdString());
+                RCLCPP_INFO_STREAM(*logger_, "Successfully set [" << full_path.toStdString() << "]: " << new_value_str.toStdString());
             } catch (const std::exception &e) {
-                RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Failed to set [" << full_path.toStdString() << "]: " << e.what());
+                RCLCPP_ERROR_STREAM(*logger_, "Failed to set [" << full_path.toStdString() << "]: " << e.what());
                 // 失敗した場合は、再取得して元の値に戻す処理を呼ぶのが望ましい
                 QMetaObject::invokeMethod(this, &RViz2Reconfigure::refreshAllValues);
             }
@@ -295,6 +297,16 @@ namespace rviz2_reconfigure
 
             checkAndRemoveEmptyParents(parent); // 親が空になったら再帰的に削除していく
         }
+    }
+
+    void RViz2Reconfigure::importPushBtn__clicked()
+    {
+
+    }
+
+    void RViz2Reconfigure::exportPushBtn__clicked()
+    {
+
     }
 
     QTreeWidgetItem* RViz2Reconfigure::getOrCreateChild(QTreeWidgetItem *parent, const QString &name)

@@ -48,6 +48,8 @@ namespace rviz2_reconfigure
         void onItemChanged(QTreeWidgetItem *item, int column);
         void autoRefreshChkBox__CheckStateChanged(int state);
         void removePushBtn__clicked();
+        void importPushBtn__clicked();
+        void exportPushBtn__clicked();
         
     protected:
         QTreeWidgetItem* getOrCreateChild(QTreeWidgetItem *parent, const QString &name);
