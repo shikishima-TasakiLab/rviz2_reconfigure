@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rviz_common REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(Qt5 ${rviz_QT_VERSION} REQUIRED Core Widgets)
 macro(qt_wrap_ui)
   qt5_wrap_ui(${ARGN})
@@ -45,6 +46,7 @@ ament_target_dependencies(rviz2_reconfigure
   "rclcpp"
   "pluginlib"
   "rviz_common"
+  "yaml-cpp"
   "Qt5"
 )
 
