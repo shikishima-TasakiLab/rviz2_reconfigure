@@ -56,6 +56,7 @@ namespace rviz2_reconfigure
         void collectLeafItems(QTreeWidgetItem *parent, QList<QTreeWidgetItem*> &leaf_items) const;
         void loadParamsToTree(const QList<QPair<QString, QString>> &params_to_load);
         void checkAndRemoveEmptyParents(QTreeWidgetItem *parent);
+        void setParamValues(const std::map<std::string, std::vector<std::pair<std::string, QTreeWidgetItem*>>> &batch_map);
 
     private:
         rclcpp::Node::SharedPtr nh_;
