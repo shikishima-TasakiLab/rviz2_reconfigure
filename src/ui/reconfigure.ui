@@ -61,6 +61,9 @@
          <normaloff>:/icons/add.svg</normaloff>:/icons/add.svg
         </iconset>
        </property>
+       <property name="toolTip">
+        <string>Add</string>
+       </property>
       </widget>
      </item>
      <item>
@@ -69,6 +72,33 @@
         <iconset>
          <normaloff>:/icons/remove.svg</normaloff>:/icons/remove.svg
         </iconset>
+       </property>
+       <property name="toolTip">
+        <string>Remove</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="importPushBtn">
+       <property name="icon">
+        <iconset>
+         <normaloff>:/icons/import.svg</normaloff>:/icons/import.svg
+        </iconset>
+       </property>
+       <property name="toolTip">
+        <string>Import</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="exportPushBtn">
+       <property name="icon">
+        <iconset>
+         <normaloff>:/icons/export.svg</normaloff>:/icons/export.svg
+        </iconset>
+       </property>
+       <property name="toolTip">
+        <string>Export</string>
        </property>
       </widget>
      </item>
@@ -92,12 +122,18 @@
          <normaloff>:/icons/refresh.svg</normaloff>:/icons/refresh.svg
         </iconset>
        </property>
+       <property name="toolTip">
+        <string>Refresh</string>
+       </property>
       </widget>
      </item>
      <item>
       <widget class="QCheckBox" name="autoRefreshChkBox">
        <property name="text">
         <string>Auto</string>
+       </property>
+       <property name="toolTip">
+        <string>Auto refresh</string>
        </property>
       </widget>
      </item>
@@ -117,6 +153,9 @@
        </property>
        <property name="value">
         <double>5.000000000000000</double>
+       </property>
+       <property name="toolTip">
+        <string>Auto refresh interval in seconds</string>
        </property>
       </widget>
      </item>

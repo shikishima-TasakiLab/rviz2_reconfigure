@@ -2,14 +2,19 @@
 #define RVIZ2_RECONFIGURE__RECONFIGURE_HPP_
 
 #ifndef Q_MOC_RUN
+
+#include <fstream>
+
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/logger.hpp>
 #include <rviz_common/panel.hpp>
 #include <rviz_common/config.hpp>
 #include <rviz_common/display_context.hpp>
+#include <yaml-cpp/yaml.h>
 
 #include <QCheckBox>
 #include <QDialog>
+#include <QFileDialog>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QStyledItemDelegate>
@@ -48,12 +53,23 @@ namespace rviz2_reconfigure
         void onItemChanged(QTreeWidgetItem *item, int column);
         void autoRefreshChkBox__CheckStateChanged(int state);
         void removePushBtn__clicked();
+        void importPushBtn__clicked();
+        void exportPushBtn__clicked();
         
     protected:
         QTreeWidgetItem* getOrCreateChild(QTreeWidgetItem *parent, const QString &name);
         void collectLeafItems(QTreeWidgetItem *parent, QList<QTreeWidgetItem*> &leaf_items) const;
         void loadParamsToTree(const QList<QPair<QString, QString>> &params_to_load);
         void checkAndRemoveEmptyParents(QTreeWidgetItem *parent);
+        void setParamValues(const std::map<std::string, std::vector<std::pair<std::string, QTreeWidgetItem*>>> &batch_map);
+        void parseYamlRecursive(
+            const std::string &node_name,
+            const YAML::Node &current_node,
+            const std::string &prefix,
+            std::map<std::string, std::map<std::string, QTreeWidgetItem*>> &registered,
+            std::map<std::string, std::vector<std::pair<std::string, QTreeWidgetItem*>>> &batch_map
+        );
+        void serializeItem(QTreeWidgetItem *item, YAML::Emitter &out);
 
     private:
         rclcpp::Node::SharedPtr nh_;

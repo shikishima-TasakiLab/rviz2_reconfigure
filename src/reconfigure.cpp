@@ -15,6 +15,8 @@ namespace rviz2_reconfigure
         connect(ui_->autoRefreshChkBox, &QCheckBox::stateChanged, this, &RViz2Reconfigure::autoRefreshChkBox__CheckStateChanged);
         // connect(ui_->autoRefreshChkBox, &QCheckBox::checkStateChanged, this, &RViz2Reconfigure::autoRefreshChkBox__CheckStateChanged); since Qt 6.7
         connect(ui_->removePushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::removePushBtn__clicked);
+        connect(ui_->importPushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::importPushBtn__clicked);
+        connect(ui_->exportPushBtn, &QPushButton::clicked, this, &RViz2Reconfigure::exportPushBtn__clicked);
     }
 
     RViz2Reconfigure::~RViz2Reconfigure()
@@ -81,9 +83,7 @@ namespace rviz2_reconfigure
         rviz_common::Config params_config = config.mapMakeChild("selected_params");
 
         QList<QTreeWidgetItem*> leaf_items;
-        for (int i = 0; i < ui_->listNodeParamValue->topLevelItemCount(); ++i) {
-            collectLeafItems(ui_->listNodeParamValue->topLevelItem(i), leaf_items);
-        }
+        collectLeafItems(ui_->listNodeParamValue->invisibleRootItem(), leaf_items);
 
         for (QTreeWidgetItem* item : leaf_items) {
             QString node_name = item->data(0, UserRole::FullPathRole).toString();
@@ -111,9 +111,7 @@ namespace rviz2_reconfigure
     {
         // すべてのノードとパラメータのアイテムを収集
         QList<QTreeWidgetItem*> leaf_items;
-        for (int i = 0; i < ui_->listNodeParamValue->topLevelItemCount(); ++i) {
-            collectLeafItems(ui_->listNodeParamValue->topLevelItem(i), leaf_items);
-        }
+        collectLeafItems(ui_->listNodeParamValue->invisibleRootItem(), leaf_items);
 
         // 2. ノード名ごとにパラメータパスとアイテムを整理
         // map<ノード名, pair<パスのリスト, アイテムのリスト>>
@@ -172,7 +170,7 @@ namespace rviz2_reconfigure
                         }
                     });
                 } catch (const std::exception &e) {
-                    RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Failed to get parameter values: " << e.what());
+                    RCLCPP_ERROR_STREAM(*logger_, "Failed to get parameter values: " << e.what());
                 }
                 // シグナルのブロックを解除
                 ui_->listNodeParamValue->blockSignals(false);
@@ -190,64 +188,13 @@ namespace rviz2_reconfigure
 
         QString node_name = item->data(0, UserRole::FullPathRole).toString();
         QString full_path = item->data(1, UserRole::FullPathRole).toString();
-        int param_type = item->data(1, UserRole::ParamTypeRole).toInt();
-        QString new_value_str = item->text(1);
 
         if (node_name.isEmpty() || full_path.isEmpty()) return;
 
-        auto client = nh_->create_client<rcl_interfaces::srv::SetParameters>(node_name.toStdString() + "/set_parameters");
-        if (!client->wait_for_service(std::chrono::milliseconds(50))) {
-            RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Service " << node_name.toStdString() << "/set_parameters not available");
-            return;
-        }
-        set_params_clients_.push_back(client);
+        std::map<std::string, std::vector<std::pair<std::string, QTreeWidgetItem*>>> batch_map;
+        batch_map[node_name.toStdString()].push_back({full_path.toStdString(), item});
 
-        auto request = std::make_shared<rcl_interfaces::srv::SetParameters::Request>();
-        rcl_interfaces::msg::Parameter param;
-        param.name = full_path.toStdString();
-        param.value.type = static_cast<rclcpp::ParameterType>(param_type);
-
-        try {
-            switch (param_type) {
-                case rclcpp::ParameterType::PARAMETER_BOOL:
-                    param.value.bool_value = (item->checkState(1) == Qt::Checked); // チェックボックスの状態から値を決定
-                    new_value_str = (param.value.bool_value) ? "true" : "false"; // ログ用に文字列も更新
-                    break;
-                case rclcpp::ParameterType::PARAMETER_INTEGER:
-                    param.value.integer_value = new_value_str.toLongLong();
-                    break;
-                case rclcpp::ParameterType::PARAMETER_DOUBLE:
-                    param.value.double_value = new_value_str.toDouble();
-                    break;
-                case rclcpp::ParameterType::PARAMETER_STRING:
-                    param.value.string_value = new_value_str.toStdString();
-                    break;
-                default:
-                    RCLCPP_WARN_STREAM(*logger_, "[" << getName().toStdString() << "]: Unsupported parameter type for setting value: " << param_type);
-                    return;
-            }
-        } catch (const std::exception &e) {
-            RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Failed to parse new value: " << e.what());
-            return;
-        }
-
-        request->parameters.push_back(param);
-
-        client->async_send_request(request, [this, client, node_name, full_path, new_value_str](rclcpp::Client<rcl_interfaces::srv::SetParameters>::SharedFuture future) {
-            try {
-                auto response = future.get();
-                if (response->results.empty() || !response->results[0].successful) {
-                    throw std::runtime_error(response->results.empty() ? "Unknown" : response->results[0].reason);
-                }
-                RCLCPP_INFO_STREAM(*logger_, "[" << getName().toStdString() << "]: Successfully set [" << full_path.toStdString() << "]: " << new_value_str.toStdString());
-            } catch (const std::exception &e) {
-                RCLCPP_ERROR_STREAM(*logger_, "[" << getName().toStdString() << "]: Failed to set [" << full_path.toStdString() << "]: " << e.what());
-                // 失敗した場合は、再取得して元の値に戻す処理を呼ぶのが望ましい
-                QMetaObject::invokeMethod(this, &RViz2Reconfigure::refreshAllValues);
-            }
-            // コールバックが終わったらクライアントを削除してリストからも消す
-            set_params_clients_.erase(std::remove(set_params_clients_.begin(), set_params_clients_.end(), client), set_params_clients_.end());
-        });
+        setParamValues(batch_map);
     }
 
     void RViz2Reconfigure::autoRefreshChkBox__CheckStateChanged(int state)
@@ -294,6 +241,98 @@ namespace rviz2_reconfigure
             delete item; // アイテムを削除してメモリも解放
 
             checkAndRemoveEmptyParents(parent); // 親が空になったら再帰的に削除していく
+        }
+    }
+
+    void RViz2Reconfigure::importPushBtn__clicked()
+    {
+        QString file_path = QFileDialog::getOpenFileName(this, "Import Parameters", "", "YAML Files (*.yaml *.yml);;All Files (*)");
+        if (file_path.isEmpty()) return;
+
+        std::map<std::string, std::map<std::string, QTreeWidgetItem*>> registered;
+        {
+            QList<QTreeWidgetItem*> leaf_items;
+            collectLeafItems(ui_->listNodeParamValue->invisibleRootItem(), leaf_items);
+
+            for (QTreeWidgetItem* item : leaf_items) {
+                std::string node_name = item->data(0, UserRole::FullPathRole).toString().toStdString();
+                std::string full_path = item->data(1, UserRole::FullPathRole).toString().toStdString();
+                if (node_name.empty() || full_path.empty()) continue;
+                registered[node_name][full_path] = item;
+            }
+        }
+
+        std::map<std::string, std::vector<std::pair<std::string, QTreeWidgetItem*>>> batch_map;
+        ui_->listNodeParamValue->blockSignals(true);
+        try {
+            const YAML::Node &ros_nodes = YAML::LoadFile(file_path.toStdString());
+            if (!ros_nodes.IsMap()) {
+                throw std::runtime_error("Invalid YAML format: top-level structure must be a map of node names to parameter lists");
+            }
+
+            for (const auto& ros_node : ros_nodes) {
+                std::string node_name = "/" + ros_node.first.as<std::string>();
+                const YAML::Node &ros_params = ros_node.second["ros__parameters"];
+
+                if (ros_params) {
+                    parseYamlRecursive(node_name, ros_params, "", registered, batch_map);
+                } else {
+                    RCLCPP_WARN_STREAM(*logger_, "Node " << node_name << " has no ros__parameters section, skipping");
+                }
+            }
+        } catch (const std::exception &e) {
+            RCLCPP_ERROR_STREAM(*logger_, "Failed to load YAML file: " << e.what());
+            ui_->listNodeParamValue->blockSignals(false);
+            return;
+        }
+
+        setParamValues(batch_map);
+        ui_->listNodeParamValue->blockSignals(false);
+    }
+
+    void RViz2Reconfigure::exportPushBtn__clicked()
+    {
+        QString file_path = QFileDialog::getSaveFileName(this, "Export Parameters", "", "YAML Files (*.yaml *.yml);;All Files (*)");
+        if (file_path.isEmpty()) return;
+
+        QList<QTreeWidgetItem*> leaf_items;
+        collectLeafItems(ui_->listNodeParamValue->invisibleRootItem(), leaf_items);
+
+        if (leaf_items.isEmpty()) {
+            RCLCPP_WARN_STREAM(*logger_, "No parameters to export");
+            return;
+        }
+
+        YAML::Emitter out;
+        out << YAML::BeginMap;
+
+        for (int i = 0; i < ui_->listNodeParamValue->topLevelItemCount(); i++) {
+            QTreeWidgetItem* node_item = ui_->listNodeParamValue->topLevelItem(i);
+            std::string node_full = node_item->text(0).toStdString();
+            std::string node_name = (node_full[0] == '/') ? node_full.substr(1) : node_full;
+
+            out << YAML::Key << node_name;
+            out << YAML::Value << YAML::BeginMap;
+            out << YAML::Key << "ros__parameters";
+            out << YAML::Value << YAML::BeginMap;
+
+            for (int j = 0; j < node_item->childCount(); ++j) {
+                serializeItem(node_item->child(j), out);
+            }
+
+            out << YAML::EndMap; // ros__parameters
+            out << YAML::EndMap; // node_name
+        }
+
+        out << YAML::EndMap; // Entire
+
+        try {
+            std::ofstream fout(file_path.toStdString());
+            fout << out.c_str();
+            fout.close();
+            RCLCPP_INFO_STREAM(*logger_, "Parameters exported successfully to " << file_path.toStdString());
+        } catch (const std::exception &e) {
+            RCLCPP_ERROR_STREAM(*logger_, "Failed to save YAML file: " << e.what());
         }
     }
 
@@ -387,6 +426,166 @@ namespace rviz2_reconfigure
                     ui_->listNodeParamValue->takeTopLevelItem(index);
                     delete parent; // メモリも解放
                 }
+            }
+        }
+    }
+
+    void RViz2Reconfigure::setParamValues(const std::map<std::string, std::vector<std::pair<std::string, QTreeWidgetItem*>>> &batch_map)
+    {
+        for (const auto& [node_name, data] : batch_map) {
+            auto client = nh_->create_client<rcl_interfaces::srv::SetParameters>(node_name + "/set_parameters");
+
+            if (!client->wait_for_service(std::chrono::milliseconds(50))) {
+                RCLCPP_ERROR_STREAM(*logger_, "Service " << node_name << "/set_parameters not available");
+                continue;
+            }
+            set_params_clients_.push_back(client);
+
+            auto request = std::make_shared<rcl_interfaces::srv::SetParameters::Request>();
+            std::vector<QString> list_value_strs;
+            
+            for (const auto& [full_path, item] : data) {
+                int param_type = item->data(1, UserRole::ParamTypeRole).toInt();
+                QString new_value_str = item->text(1);
+
+                rcl_interfaces::msg::Parameter param;
+                param.name = full_path;
+                param.value.type = static_cast<rclcpp::ParameterType>(param_type);
+
+                try {
+                    switch (param_type) {
+                        case rclcpp::ParameterType::PARAMETER_BOOL:
+                            param.value.bool_value = (item->checkState(1) == Qt::Checked);
+                            new_value_str = param.value.bool_value ? "true" : "false"; // 表示用に文字列も更新
+                            break;
+                        case rclcpp::ParameterType::PARAMETER_INTEGER:
+                            param.value.integer_value = new_value_str.toLongLong();
+                            break;
+                        case rclcpp::ParameterType::PARAMETER_DOUBLE:
+                            param.value.double_value = new_value_str.toDouble();
+                            break;
+                        case rclcpp::ParameterType::PARAMETER_STRING:
+                            param.value.string_value = new_value_str.toStdString();
+                            break;
+                        default:
+                            RCLCPP_WARN_STREAM(*logger_, "Unsupported parameter type for setting value: " << param_type);
+                            continue; // このパラメータはスキップ
+                    }
+                    request->parameters.push_back(param);
+                    list_value_strs.push_back(new_value_str);
+                } catch (const std::exception &e) {
+                    RCLCPP_ERROR_STREAM(*logger_, "Failed to parse new value for [" << full_path << "]: " << e.what());
+                    continue; // このパラメータはスキップ
+                }
+            }
+
+            client->async_send_request(request, [this, client, request, list_value_strs](rclcpp::Client<rcl_interfaces::srv::SetParameters>::SharedFuture future) {
+                try {
+                    auto response = future.get();
+                    // 成功/失敗の処理
+                    if (response->results.empty() || !response->results[0].successful) {
+                        throw std::runtime_error(response->results.empty() ? "Unknown" : response->results[0].reason);
+                    }
+                    for (size_t i = 0; i < request->parameters.size(); ++i) {
+                        RCLCPP_INFO_STREAM(*logger_, "Successfully set [" << request->parameters[i].name << "]: " << list_value_strs[i].toStdString());
+                    }
+                } catch (const std::exception &e) {
+                    RCLCPP_ERROR_STREAM(*logger_, "Failed to set parameter values: " << e.what());
+                }
+                // コールバックが終わったらクライアントを削除してリストからも消す
+                set_params_clients_.erase(std::remove(set_params_clients_.begin(), set_params_clients_.end(), client), set_params_clients_.end());
+                if (set_params_clients_.empty()) {
+                    // すべてのリクエストが終わったら、最新値を再取得してUIを更新する
+                    QMetaObject::invokeMethod(this, &RViz2Reconfigure::refreshAllValues);
+                }
+            });
+        }
+    }
+
+    void RViz2Reconfigure::parseYamlRecursive(
+        const std::string &node_name,
+        const YAML::Node &current_node,
+        const std::string &prefix,
+        std::map<std::string, std::map<std::string, QTreeWidgetItem*>> &registered,
+        std::map<std::string, std::vector<std::pair<std::string, QTreeWidgetItem*>>> &batch_map
+    )
+    {
+        for (const auto& item : current_node) {
+            std::string key = item.first.as<std::string>();
+            std::string full_path = prefix.empty() ? key : prefix + "." + key;
+
+            if (item.second.IsMap()) {
+                // ノード（辞書）なら再帰的に探索
+                parseYamlRecursive(node_name, item.second, full_path, registered, batch_map);
+            } else {
+                if (registered.count(node_name) && registered[node_name].count(full_path)) {
+                    QTreeWidgetItem* existing_item = registered[node_name][full_path];
+                    int param_type = existing_item->data(1, UserRole::ParamTypeRole).toInt();
+
+                    // 既存アイテムの値を更新
+                    switch (param_type)
+                    {
+                    case rclcpp::ParameterType::PARAMETER_BOOL:
+                        existing_item->setCheckState(1, item.second.as<bool>() ? Qt::Checked : Qt::Unchecked);
+                        break;
+                    
+                    case rclcpp::ParameterType::PARAMETER_INTEGER:
+                        existing_item->setText(1, QString::number(item.second.as<long long>()));
+                        break;
+
+                    case rclcpp::ParameterType::PARAMETER_DOUBLE:
+                        existing_item->setText(1, QString::number(item.second.as<double>()));
+                        break;
+
+                    case rclcpp::ParameterType::PARAMETER_STRING:
+                        existing_item->setText(1, QString::fromStdString(item.second.as<std::string>()));
+                        break;
+
+                    default:
+                        RCLCPP_WARN_STREAM(*logger_, "Unsupported parameter type for [" << full_path << "]");
+                        break;
+                    }
+
+                    batch_map[node_name].push_back({full_path, existing_item}); // 既存アイテムをバッチ更新対象に追加
+                }
+            }
+        }
+    }
+
+    void RViz2Reconfigure::serializeItem(QTreeWidgetItem *item, YAML::Emitter &out)
+    {
+        std::string key = item->text(0).toStdString();
+
+        if (item->childCount() > 0) {
+            out << YAML::Key << key;
+            out << YAML::Value << YAML::BeginMap;
+            for (int i = 0; i < item->childCount(); ++i) {
+                serializeItem(item->child(i), out);
+            }
+            out << YAML::EndMap;
+        } else {
+            int param_type = item->data(1, UserRole::ParamTypeRole).toInt();
+            QString value_str = item->text(1);
+
+            out << YAML::Key << key;
+            out << YAML::Value;
+
+            switch (param_type) {
+                case rclcpp::ParameterType::PARAMETER_BOOL:
+                    out << (value_str.toLower() == "true" || value_str == "1" || item->checkState(1) == Qt::Checked);
+                    break;
+                case rclcpp::ParameterType::PARAMETER_INTEGER:
+                    out << value_str.toLongLong();
+                    break;
+                case rclcpp::ParameterType::PARAMETER_DOUBLE:
+                    out << value_str.toDouble();
+                    break;
+                case rclcpp::ParameterType::PARAMETER_STRING:
+                    out << value_str.toStdString();
+                    break;
+                default:
+                    RCLCPP_WARN_STREAM(*logger_, "Unsupported parameter type for export: " << item->data(0, UserRole::FullPathRole).toString().toStdString());
+                    break;
             }
         }
     }
