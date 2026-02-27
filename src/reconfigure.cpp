@@ -303,52 +303,32 @@ namespace rviz2_reconfigure
             return;
         }
 
-        YAML::Node ros_nodes;
-        for (QTreeWidgetItem* item : leaf_items) {
-            std::string node_full = item->data(0, UserRole::FullPathRole).toString().toStdString();
-            std::string full_path = item->data(1, UserRole::FullPathRole).toString().toStdString();
-            QString value_str = item->text(1);
-            int param_type = item->data(1, UserRole::ParamTypeRole).toInt();
+        YAML::Emitter out;
+        out << YAML::BeginMap;
 
-            // 1. ノード名の正規化（先頭スラッシュ除去）
-            std::string node_name = (node_full[0] == '/') ? node_full.substr(1) : node_full; // 先頭のスラッシュを除く
+        for (int i = 0; i < ui_->listNodeParamValue->topLevelItemCount(); i++) {
+            QTreeWidgetItem* node_item = ui_->listNodeParamValue->topLevelItem(i);
+            std::string node_full = node_item->text(0).toStdString();
+            std::string node_name = (node_full[0] == '/') ? node_full.substr(1) : node_full;
 
-            // 2. 階層の起点を取得
-            YAML::Node current_node = ros_nodes[node_name]["ros__parameters"];
+            out << YAML::Key << node_name;
+            out << YAML::Value << YAML::BeginMap;
+            out << YAML::Key << "ros__parameters";
+            out << YAML::Value << YAML::BeginMap;
 
-            // 3. full_path をドットで分割して、末尾の1つ手前まで階層を掘る
-            QStringList path_parts = QString::fromStdString(full_path).split('.');
-            for (int i = 0; i < path_parts.size() - 1; ++i) {
-                current_node = current_node[path_parts[i].toStdString()];
+            for (int j = 0; j < node_item->childCount(); ++j) {
+                serializeItem(node_item->child(j), out);
             }
 
-            // 4. 最後のキー（パラメータ名）を取得
-            std::string leaf_key = path_parts.last().toStdString();
-            RCLCPP_INFO_STREAM(*logger_, "Full Path: " << full_path << ", Leaf key: " << leaf_key << ", value: " << value_str.toStdString() << ", type: " << param_type);
-
-            switch (param_type) {
-                case rclcpp::ParameterType::PARAMETER_BOOL:
-                    current_node[leaf_key] = (value_str.toLower() == "true" || value_str == "1" || item->checkState(1) == Qt::Checked) ? true : false;
-                    break;
-                case rclcpp::ParameterType::PARAMETER_INTEGER:
-                    current_node[leaf_key] = value_str.toLongLong();
-                    break;
-                case rclcpp::ParameterType::PARAMETER_DOUBLE:
-                    current_node[leaf_key] = value_str.toDouble();
-                    break;
-                case rclcpp::ParameterType::PARAMETER_STRING:
-                    current_node[leaf_key] = value_str.toStdString();
-                    break;
-                default:
-                    RCLCPP_WARN_STREAM(*logger_, "Unsupported parameter type for export: " << node_name << " : " << full_path);
-                    break;
-            }
-            RCLCPP_INFO_STREAM(*logger_, "Current YAML structure:\n" << ros_nodes);
+            out << YAML::EndMap; // ros__parameters
+            out << YAML::EndMap; // node_name
         }
+
+        out << YAML::EndMap; // Entire
 
         try {
             std::ofstream fout(file_path.toStdString());
-            fout << ros_nodes;
+            fout << out.c_str();
             fout.close();
             RCLCPP_INFO_STREAM(*logger_, "Parameters exported successfully to " << file_path.toStdString());
         } catch (const std::exception &e) {
@@ -572,6 +552,43 @@ namespace rviz2_reconfigure
         }
     }
 
+    void RViz2Reconfigure::serializeItem(QTreeWidgetItem *item, YAML::Emitter &out)
+    {
+        std::string key = item->text(0).toStdString();
+
+        if (item->childCount() > 0) {
+            out << YAML::Key << key;
+            out << YAML::Value << YAML::BeginMap;
+            for (int i = 0; i < item->childCount(); ++i) {
+                serializeItem(item->child(i), out);
+            }
+            out << YAML::EndMap;
+        } else {
+            int param_type = item->data(1, UserRole::ParamTypeRole).toInt();
+            QString value_str = item->text(1);
+
+            out << YAML::Key << key;
+            out << YAML::Value;
+
+            switch (param_type) {
+                case rclcpp::ParameterType::PARAMETER_BOOL:
+                    out << (value_str.toLower() == "true" || value_str == "1" || item->checkState(1) == Qt::Checked);
+                    break;
+                case rclcpp::ParameterType::PARAMETER_INTEGER:
+                    out << value_str.toLongLong();
+                    break;
+                case rclcpp::ParameterType::PARAMETER_DOUBLE:
+                    out << value_str.toDouble();
+                    break;
+                case rclcpp::ParameterType::PARAMETER_STRING:
+                    out << value_str.toStdString();
+                    break;
+                default:
+                    RCLCPP_WARN_STREAM(*logger_, "Unsupported parameter type for export: " << item->data(0, UserRole::FullPathRole).toString().toStdString());
+                    break;
+            }
+        }
+    }
 
 
     ParamDialog::ParamDialog(rclcpp::Node::SharedPtr node_handle, const std::shared_ptr<rclcpp::Logger> &logger, rviz_common::Panel *parent)

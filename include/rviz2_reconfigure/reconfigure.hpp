@@ -69,6 +69,7 @@ namespace rviz2_reconfigure
             std::map<std::string, std::map<std::string, QTreeWidgetItem*>> &registered,
             std::map<std::string, std::vector<std::pair<std::string, QTreeWidgetItem*>>> &batch_map
         );
+        void serializeItem(QTreeWidgetItem *item, YAML::Emitter &out);
 
     private:
         rclcpp::Node::SharedPtr nh_;
