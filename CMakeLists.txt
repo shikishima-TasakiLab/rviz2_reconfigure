@@ -31,7 +31,11 @@ qt5_wrap_ui(UIC_FILES
 add_library(rviz2_reconfigure SHARED
   ${UIC_FILES}
   include/rviz2_reconfigure/reconfigure.hpp
+  include/rviz2_reconfigure/param_dialog.hpp
+  include/rviz2_reconfigure/delegate.hpp
   src/reconfigure.cpp
+  src/param_dialog.cpp
+  src/delegate.cpp
   src/icons/icons.qrc
 )
 
