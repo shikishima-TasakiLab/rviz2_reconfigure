@@ -61,6 +61,10 @@ install(
   DESTINATION include/${PROJECT_NAME}
 )
 install(
+  DIRECTORY icons
+  DESTINATION share/${PROJECT_NAME}
+)
+install(
   DIRECTORY src/icons
   DESTINATION share/${PROJECT_NAME}
 )

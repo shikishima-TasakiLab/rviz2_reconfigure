@@ -6,7 +6,7 @@ Parameter reconfigure for RViz2.
 |-----------------------|-------------------------|
 |![panel](img/panel.jpg)|![dialog](img/dialog.jpg)|
 
-Verified to work with ros2 humble (2026/02/22).
+Verified to work with ros2 humble (2026/02/28).
 
 ## Install
 
