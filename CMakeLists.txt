@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rviz_common REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(Qt5 ${rviz_QT_VERSION} REQUIRED Core Widgets)
 macro(qt_wrap_ui)
   qt5_wrap_ui(${ARGN})
@@ -30,7 +31,11 @@ qt5_wrap_ui(UIC_FILES
 add_library(rviz2_reconfigure SHARED
   ${UIC_FILES}
   include/rviz2_reconfigure/reconfigure.hpp
+  include/rviz2_reconfigure/param_dialog.hpp
+  include/rviz2_reconfigure/delegate.hpp
   src/reconfigure.cpp
+  src/param_dialog.cpp
+  src/delegate.cpp
   src/icons/icons.qrc
 )
 
@@ -45,6 +50,7 @@ ament_target_dependencies(rviz2_reconfigure
   "rclcpp"
   "pluginlib"
   "rviz_common"
+  "yaml-cpp"
   "Qt5"
 )
 
@@ -53,6 +59,10 @@ target_compile_definitions(rviz2_reconfigure PUBLIC "RVIZ2_RECONFIGURE_BUILDING_
 install(
   DIRECTORY include/
   DESTINATION include/${PROJECT_NAME}
+)
+install(
+  DIRECTORY icons
+  DESTINATION share/${PROJECT_NAME}
 )
 install(
   DIRECTORY src/icons
