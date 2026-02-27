@@ -158,7 +158,7 @@ namespace rviz2_reconfigure
                                     items[i]->setText(1, QString::number(param_value.integer_value)); // 2列目に値を表示
                                     break;
                                 case rclcpp::ParameterType::PARAMETER_DOUBLE:
-                                    items[i]->setText(1, QString::number(param_value.double_value)); // 2列目に値を表示
+                                    items[i]->setText(1, QString::number(param_value.double_value, 'f')); // 2列目に値を表示
                                     break;
                                 case rclcpp::ParameterType::PARAMETER_STRING:
                                     items[i]->setText(1, QString::fromStdString(param_value.string_value)); // 2列目に値を表示
