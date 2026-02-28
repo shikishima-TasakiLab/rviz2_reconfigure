@@ -163,6 +163,12 @@ namespace rviz2_reconfigure
                                 case rclcpp::ParameterType::PARAMETER_STRING:
                                     items[i]->setText(1, QString::fromStdString(param_value.string_value)); // 2列目に値を表示
                                     break;
+                                case rclcpp::ParameterType::PARAMETER_BYTE_ARRAY:
+                                case rclcpp::ParameterType::PARAMETER_BOOL_ARRAY:
+                                case rclcpp::ParameterType::PARAMETER_INTEGER_ARRAY:
+                                case rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY:
+                                case rclcpp::ParameterType::PARAMETER_STRING_ARRAY:
+                                case rclcpp::ParameterType::PARAMETER_NOT_SET:
                                 default:
                                     items[i]->setText(1, "<unsupported type>"); // 2列目に値を表示
                             }
@@ -467,6 +473,12 @@ namespace rviz2_reconfigure
                         case rclcpp::ParameterType::PARAMETER_STRING:
                             param.value.string_value = new_value_str.toStdString();
                             break;
+                        case rclcpp::ParameterType::PARAMETER_BYTE_ARRAY:
+                        case rclcpp::ParameterType::PARAMETER_BOOL_ARRAY:
+                        case rclcpp::ParameterType::PARAMETER_INTEGER_ARRAY:
+                        case rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY:
+                        case rclcpp::ParameterType::PARAMETER_STRING_ARRAY:
+                        case rclcpp::ParameterType::PARAMETER_NOT_SET:
                         default:
                             RCLCPP_WARN_STREAM(*logger_, "Unsupported parameter type for setting value: " << param_type);
                             continue; // このパラメータはスキップ
@@ -541,6 +553,12 @@ namespace rviz2_reconfigure
                         existing_item->setText(1, QString::fromStdString(item.second.as<std::string>()));
                         break;
 
+                    case rclcpp::ParameterType::PARAMETER_BYTE_ARRAY:
+                    case rclcpp::ParameterType::PARAMETER_BOOL_ARRAY:
+                    case rclcpp::ParameterType::PARAMETER_INTEGER_ARRAY:
+                    case rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY:
+                    case rclcpp::ParameterType::PARAMETER_STRING_ARRAY:
+                    case rclcpp::ParameterType::PARAMETER_NOT_SET:
                     default:
                         RCLCPP_WARN_STREAM(*logger_, "Unsupported parameter type for [" << full_path << "]");
                         break;
@@ -583,6 +601,12 @@ namespace rviz2_reconfigure
                 case rclcpp::ParameterType::PARAMETER_STRING:
                     out << value_str.toStdString();
                     break;
+                case rclcpp::ParameterType::PARAMETER_BYTE_ARRAY:
+                case rclcpp::ParameterType::PARAMETER_BOOL_ARRAY:
+                case rclcpp::ParameterType::PARAMETER_INTEGER_ARRAY:
+                case rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY:
+                case rclcpp::ParameterType::PARAMETER_STRING_ARRAY:
+                case rclcpp::ParameterType::PARAMETER_NOT_SET:
                 default:
                     RCLCPP_WARN_STREAM(*logger_, "Unsupported parameter type for export: " << item->data(0, UserRole::FullPathRole).toString().toStdString());
                     break;
