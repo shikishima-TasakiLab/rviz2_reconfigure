@@ -301,6 +301,9 @@ namespace rviz2_reconfigure
         QString file_path = QFileDialog::getSaveFileName(this, "Export Parameters", "", "YAML Files (*.yaml *.yml);;All Files (*)");
         if (file_path.isEmpty()) return;
 
+        QFileInfo check_file(file_path);
+        if (check_file.suffix().isEmpty()) file_path += ".yml";
+
         QList<QTreeWidgetItem*> leaf_items;
         collectLeafItems(ui_->listNodeParamValue->invisibleRootItem(), leaf_items);
 
@@ -596,8 +599,6 @@ namespace rviz2_reconfigure
                     out << value_str.toLongLong();
                     break;
                 case rclcpp::ParameterType::PARAMETER_DOUBLE:
-                    out << value_str.toDouble();
-                    break;
                 case rclcpp::ParameterType::PARAMETER_STRING:
                     out << value_str.toStdString();
                     break;
